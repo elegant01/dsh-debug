@@ -44,7 +44,11 @@ dsh plugin --profile web add @yxzpro/dsh-debug
 dsh plugin --profile desktop add @yxzpro/dsh-debug
 ```
 
-Requires `dlv` on PATH (`go install github.com/go-delve/delve/cmd/dlv@latest`), or point `DSH_DEBUG_DLV` at the binary.
+Requires `dlv` on PATH, or point `DSH_DEBUG_DLV` at the binary. **The Delve build must match your Go toolchain** — Delve refuses to launch otherwise. Pairing rule: install the Delve release whose minimum Go version covers yours, e.g. with Go 1.22:
+
+```bash
+go install github.com/go-delve/delve/cmd/dlv@v1.24.2
+```
 
 ## Develop
 
