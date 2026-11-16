@@ -274,32 +274,48 @@ window.__ModuleLoader__.load({
       h('path', { d: 'M8 2a3 3 0 0 0-3 3v.34L3.6 4.2a.75.75 0 0 0-.8 1.26L4.3 6.7c-.2.34-.3.72-.3 1.1v.7H2.25a.75.75 0 0 0 0 1.5H4v.55c0 .24.03.47.08.7l-1.6 1.6a.75.75 0 1 0 1.06 1.05l1.34-1.33A3 3 0 0 0 8 13.5a3 3 0 0 0 3.12-2.15l1.34 1.33a.75.75 0 0 0 1.06-1.06l-1.6-1.6c.05-.22.08-.45.08-.69V10h1.75a.75.75 0 0 0 0-1.5H12v-.7c0-.38-.1-.76-.3-1.1l1.5-1.24a.75.75 0 0 0-.8-1.26L11 5.34V5a3 3 0 0 0-3-3Zm-1.5 3c0-.83.67-1.5 1.5-1.5S9.5 4.17 9.5 5v.5h-3V5Z' }))
 
     function apply(ctx) {
-      const service = ctx.betterSidebar ?? ctx.get?.('betterSidebar')
-      if (!service?.registerTab) {
-        try { console.warn('dsh-debug: dsh-better-sidebar is not installed — the Debug tab needs it (tools still work)') } catch { /* no console */ }
-        return undefined
-      }
+      try { console.log('[dsh-debug] client loaded') } catch { /* no console */ }
+      let registered = false
       const descriptor = {
         id: 'debug',
         title: () => 'Debug',
-        description: () => 'Debugger: breakpoints, stack, variables, evaluate — Go (Delve) and PHP (Xdebug)',
+        description: () => 'Debugger: breakpoints, stack, variables, evaluate — Go (Delve), PHP (Xdebug), Node (CDP)',
         icon: bugIcon,
         order: 25,
         single: true,
         badge: () => null,
         component: ({ scope, visible }) => h(DebugPanel, { scope, visible }),
       }
-      // Register through ctx.effect so the tab is unregistered with the fiber.
-      if (typeof ctx.effect === 'function') {
-        return ctx.effect(() => service.registerTab(descriptor), 'dsh-debug: debug tab')
+      const tryRegister = () => {
+        const service = ctx.betterSidebar ?? ctx.get?.('betterSidebar')
+        if (!service || typeof service.registerTab !== 'function' || registered) return false
+        try {
+          if (typeof ctx.effect === 'function') {
+            ctx.effect(() => service.registerTab(descriptor), 'dsh-debug: debug tab')
+          } else {
+            service.registerTab(descriptor)
+          }
+          registered = true
+          try { console.log('[dsh-debug] Debug tab registered') } catch { /* no console */ }
+          return true
+        } catch (err) {
+          try { console.warn('[dsh-debug] registerTab failed:', err) } catch { /* no console */ }
+          return false
+        }
       }
-      return service.registerTab(descriptor)
+      // better-sidebar's client half provides the service whenever it is
+      // ready — which may be later than this bundle's apply. Poll briefly
+      // before giving up (same pattern the ecosystem viewers use).
+      if (!tryRegister()) {
+        let tries = 0
+        const timer = setInterval(() => {
+          tries += 1
+          if (tryRegister() || tries > 40) clearInterval(timer)
+        }, 500)
+      }
     }
 
     exports.apply = apply
-    // The load edge: apply() runs only after better-sidebar's client half has
-    // provided the service. An empty inject races the provider and the tab
-    // never registers.
     exports.inject = ['betterSidebar']
     return module.exports
   },

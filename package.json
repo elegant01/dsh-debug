@@ -25,10 +25,7 @@
     },
     "client": {
       "platform": "web",
-      "immediately": true,
-      "inject": [
-        "betterSidebar"
-      ]
+      "immediately": true
     }
   },
   "engines": {
