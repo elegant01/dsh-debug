@@ -274,12 +274,12 @@ window.__ModuleLoader__.load({
       h('path', { d: 'M8 2a3 3 0 0 0-3 3v.34L3.6 4.2a.75.75 0 0 0-.8 1.26L4.3 6.7c-.2.34-.3.72-.3 1.1v.7H2.25a.75.75 0 0 0 0 1.5H4v.55c0 .24.03.47.08.7l-1.6 1.6a.75.75 0 1 0 1.06 1.05l1.34-1.33A3 3 0 0 0 8 13.5a3 3 0 0 0 3.12-2.15l1.34 1.33a.75.75 0 0 0 1.06-1.06l-1.6-1.6c.05-.22.08-.45.08-.69V10h1.75a.75.75 0 0 0 0-1.5H12v-.7c0-.38-.1-.76-.3-1.1l1.5-1.24a.75.75 0 0 0-.8-1.26L11 5.34V5a3 3 0 0 0-3-3Zm-1.5 3c0-.83.67-1.5 1.5-1.5S9.5 4.17 9.5 5v.5h-3V5Z' }))
 
     function apply(ctx) {
-      const service = ctx.get?.('betterSidebar')
+      const service = ctx.betterSidebar ?? ctx.get?.('betterSidebar')
       if (!service?.registerTab) {
-        ctx.logger?.warn?.('dsh-debug: dsh-better-sidebar is not installed — the Debug tab needs it (tools still work)')
+        try { console.warn('dsh-debug: dsh-better-sidebar is not installed — the Debug tab needs it (tools still work)') } catch { /* no console */ }
         return undefined
       }
-      const dispose = service.registerTab({
+      const descriptor = {
         id: 'debug',
         title: () => 'Debug',
         description: () => 'Debugger: breakpoints, stack, variables, evaluate — Go (Delve) and PHP (Xdebug)',
@@ -288,12 +288,19 @@ window.__ModuleLoader__.load({
         single: true,
         badge: () => null,
         component: ({ scope, visible }) => h(DebugPanel, { scope, visible }),
-      })
-      return dispose
+      }
+      // Register through ctx.effect so the tab is unregistered with the fiber.
+      if (typeof ctx.effect === 'function') {
+        return ctx.effect(() => service.registerTab(descriptor), 'dsh-debug: debug tab')
+      }
+      return service.registerTab(descriptor)
     }
 
     exports.apply = apply
-    exports.inject = []
+    // The load edge: apply() runs only after better-sidebar's client half has
+    // provided the service. An empty inject races the provider and the tab
+    // never registers.
+    exports.inject = ['betterSidebar']
     return module.exports
   },
 })
