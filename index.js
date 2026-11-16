@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DebugSessionManager, DebugArgumentError } from './lib/session.js'
 import { makeDebugTools } from './lib/tools.js'
+import { makeApiHandler, trustFence } from './lib/http-api.js'
 
 export const name = 'dsh-debug'
 
@@ -73,8 +74,24 @@ export function apply(ctx) {
     })
   }
 
+  // Browser half: the Debug sidebar tab talks to these routes. Same trust
+  // fence as every other plugin host route: loopback Host, or a same-origin/
+  // same-site browser fetch.
+  const fence = trustFence(ctx)
+  let unregisterApi
+  try {
+    unregisterApi = ctx.webServer.register({
+      kind: 'prefix',
+      path: '/dsh-debug/api',
+      handler: makeApiHandler(manager, { fence, audit }),
+    })
+  } catch (error) {
+    ctx.logger?.warn?.(`dsh-debug: api route registration failed: ${error?.message ?? error}`)
+  }
+
   ctx.effect(() => async () => {
     unregister?.()
+    try { await unregisterApi?.() } catch { /* gone */ }
     await manager.dispose()
   }, 'dsh-debug: lifecycle')
 
