@@ -14,7 +14,7 @@ No code changes, no `var_dump`, no guesswork. Every debug run is recorded in an 
 
 ## Status
 
-**Phase 1 — Go (Delve/DAP) + PHP (Xdebug/DBGp), tools only.** Both acceptance suites run against real debuggers: 6/6 on Delve 1.24 + Go 1.22, 6/6 on Xdebug 3.1 + PHP 7.4. The sidebar UI is Phase 2 (roadmap below).
+**Phase 3 — Go (Delve/DAP) + PHP (Xdebug/DBGp), CLI and web attach, tools only.** Acceptance: 6/6 on Delve 1.24 + Go 1.22, 6/6 on Xdebug 3.1 + PHP 7.4 (CLI), 2/2 web attach against `php -S` with trigger mode. The sidebar UI is Phase 2 (roadmap below — phases numbered by internal order, attach landed early because it was the highest-value one).
 
 ## Tools for the agent
 
@@ -34,7 +34,26 @@ One session per workspace per language. `language` (`go` | `php`) is auto-detect
 
 - `debug_run` needs `program`: the entry `.php` script (absolute, or relative to the workspace).
 - PHP runs against any local PHP with Xdebug 3 loaded: point `DSH_DEBUG_PHP` at the binary and, when Xdebug isn't already loaded by php.ini, `DSH_DEBUG_XDEBUG` at the extension dll/so. The session arms `xdebug.mode=debug` + `start_with_request=yes` per run — your php.ini stays untouched.
-- Web/FPM attach is on the Phase 3 roadmap; Phase 1 covers CLI scripts (which includes `artisan`, PHPUnit, workers, consumers…).
+
+### Web attach (`attach: true`)
+
+For web requests (FPM, Apache, `php -S`) or long-running workers you don't want the plugin to spawn, `debug_run` with `attach: true` arms the DBGp listener and answers with the trigger:
+
+```json
+{
+  "status": "armed",
+  "trigger": {
+    "urlParam": "XDEBUG_SESSION=dsh-debug",
+    "cookie": "XDEBUG_SESSION=dsh-debug",
+    "listen": "127.0.0.1:54663"
+  },
+  "hint": "listener armed, no debugger connected yet — fire the request with the trigger, then poll debug_state"
+}
+```
+
+The target PHP needs `xdebug.mode=debug`, `xdebug.start_with_request=trigger` (or `yes`), and `client_host/client_port` pointing at the listener (pin it with `port` when you need a known port for forwarding). Fire the request with the `XDEBUG_SESSION` trigger, the session pauses at your breakpoints, and `debug_continue` lets the HTTP response complete. Late connections are picked up — `debug_state` reports the snapshot whenever the request arrives.
+
+For containers/remote hosts, `pathMappings: [{local, remote}]` translates breakpoint paths (you always give workspace-local paths) and maps reported paths back.
 
 ### Go notes
 
