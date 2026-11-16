@@ -69,12 +69,55 @@ request is still executing", poll again.
 ## Notes
 
 - `pathMappings` are required: breakpoints are workspace-local paths, Xdebug
-  reports VM paths, and the session translates both ways.
+  reports VM paths, and the session translates both ways. **The remote side is
+  the path as the PHP process sees it** — for the lamp container that is the
+  in-container path (`/data/app/app_default/wwwroot/appwork`), not the VM host
+  path (`/var/www/html/appwork`).
 - The tunnel binds loopback on both ends: nothing is exposed to the LAN, no
   Windows firewall rule is needed. (The plugin's attach mode *can* bind
   `0.0.0.0` via the `host` parameter for setups where a tunnel is impossible —
   prefer the tunnel.)
-- php74-fpm inside the lamp container (dev2 / old appwork) is a separate
-  setup: the container has no Xdebug yet, and reaching the loopback tunnel
-  from inside docker needs either sshd `GatewayPorts=clientspecified` on the
-  VM or a direct `192.168.33.1` route with a non-loopback listener.
+
+## dev2 (old appwork, php74-fpm inside the lamp container)
+
+Also set up. The container builds its own Xdebug 3.1.6 (`/data/opt/php74/…`,
+php.ini carries the same marked trigger-mode block, but pointing at the
+docker0 forwarder):
+
+```ini
+; --- dsh-debug xdebug (trigger mode, zero impact on normal requests) ---
+zend_extension=xdebug.so
+xdebug.mode=debug
+xdebug.start_with_request=trigger
+xdebug.client_host=172.17.0.1
+xdebug.client_port=9004
+xdebug.idekey=dsh-debug
+```
+
+The container cannot reach the VM's loopback tunnel, so two extra pieces run
+on the VM host:
+
+1. sshd has `GatewayPorts clientspecified` appended to `/etc/ssh/sshd_config`
+   (reload is enough; existing sessions are unaffected).
+2. `python3 /tmp/vm-dbgp-forward.py` (from `tools/vm-dbgp-forward.py` in this
+   repo) forwards docker0 `172.17.0.1:9004` → loopback `127.0.0.1:9003`, where
+   the `ssh -R` tunnel ends. Start it with `nohup … &` after the tunnel is up.
+
+Then:
+
+```js
+debug_run {
+  language: 'php',
+  attach: true,
+  port: 9003,
+  pathMappings: [{ local: 'F:/centos/appwork', remote: '/data/app/app_default/wwwroot/appwork' }],
+  breakpoints: [{ file: 'public/index.php', line: 24 }],
+}
+```
+
+and trigger dev2 (from the VM: `curl -H 'Host: dev2.mapi.4399youpai.com'
+'http://127.0.0.1/…?XDEBUG_SESSION=dsh-debug'`).
+
+Container-side pieces are ephemeral: if the lamp container is recreated, redo
+the install (build xdebug, copy the .so, append the ini block, `kill -USR2`
+the php74-fpm master).
