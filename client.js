@@ -190,7 +190,7 @@ window.__ModuleLoader__.load({
           h('select', {
             value: language, onChange: (e) => setLanguage(e.target.value),
             style: { ...S.input, flex: '0 0 auto' }, disabled: active,
-          }, h('option', { value: 'go' }, 'Go'), h('option', { value: 'php' }, 'PHP')),
+          }, h('option', { value: 'go' }, 'Go'), h('option', { value: 'php' }, 'PHP'), h('option', { value: 'node' }, 'Node')),
           h(Btn, { label: '▶ Run', title: 'debug_run', disabled: busy || active || !workspace, onClick: () => act('run', runArgs()) }),
           h(Btn, { label: 'Attach', title: 'debug_run attach:true — arm the listener and wait for Xdebug', disabled: busy || active || !workspace || language !== 'php', onClick: () => act('run', { attach: true, breakpoints, timeoutMs: 5000 }) }),
           h(Btn, { label: '⏵', title: 'Continue', disabled: busy || !paused, onClick: () => act('continue', { action: 'continue' }) }),

@@ -1,6 +1,6 @@
 # dsh-debug
 
-Runtime debugger for [DeepSeek Harness](https://github.com/topics/dsh-plugin) — agents can stop a real program at a real line and read its real variables, instead of guessing or instrumenting code with temporary log lines. **Go** (Delve/DAP) and **PHP** (Xdebug 3/DBGp), same tool surface.
+Runtime debugger for [DeepSeek Harness](https://github.com/topics/dsh-plugin) — agents can stop a real program at a real line and read its real variables, instead of guessing or instrumenting code with temporary log lines. **Go** (Delve/DAP), **PHP** (Xdebug 3/DBGp) and **Node** (built-in inspector/CDP), same tool surface.
 
 ```
 你: 这个接口为什么 500?
@@ -14,7 +14,7 @@ No code changes, no `var_dump`, no guesswork. Every debug run is recorded in an 
 
 ## Status
 
-**Phase 3 — Go (Delve/DAP) + PHP (Xdebug/DBGp), CLI and web attach, tools only.** Acceptance: 6/6 on Delve 1.24 + Go 1.22, 6/6 on Xdebug 3.1 + PHP 7.4 (CLI), 2/2 web attach against `php -S` with trigger mode. The sidebar UI is Phase 2 (roadmap below — phases numbered by internal order, attach landed early because it was the highest-value one).
+**Go (Delve/DAP) + PHP (Xdebug/DBGp) + Node (CDP), CLI and web attach, tools + sidebar UI.** Acceptance: 6/6 on Delve 1.24 + Go 1.22, 6/6 on Xdebug 3.1 + PHP 7.4 (CLI), 6/6 on Node 22, 2/2 web attach against `php -S` with trigger mode.
 
 ## Tools for the agent
 
@@ -62,6 +62,12 @@ Requires `dlv` on PATH, or point `DSH_DEBUG_DLV` at the binary. **The Delve buil
 ```bash
 go install github.com/go-delve/delve/cmd/dlv@v1.24.2
 ```
+
+### Node notes
+
+- `debug_run` needs `program`: the entry `.js`/`.ts` file (absolute, or relative to the workspace).
+- No external debugger required: the session drives the built-in inspector (`node --inspect-brk=0`). `DSH_DEBUG_NODE` picks a specific node binary; the plugin's own `process.execPath` is the default.
+- TypeScript: run it the way you already run it — modern Node's `--experimental-strip-types`, or tsx/ts-node through `nodeArgs`. Breakpoint lines are the runtime's lines.
 
 ## Safety
 

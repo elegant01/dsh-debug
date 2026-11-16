@@ -1,6 +1,6 @@
 # dsh-debug
 
-DeepSeek Harness 的运行时调试器——让 agent 把真实程序停在真实的一行上、读到真实的变量值，而不是靠猜，也不是往代码里临时塞日志。**Go**（Delve/DAP）和 **PHP**（Xdebug 3/DBGp）共用同一套工具面。
+DeepSeek Harness 的运行时调试器——让 agent 把真实程序停在真实的一行上、读到真实的变量值，而不是靠猜，也不是往代码里临时塞日志。**Go**（Delve/DAP）、**PHP**（Xdebug 3/DBGp）、**Node**（内置 inspector/CDP）共用同一套工具面。
 
 ```
 你: 这个接口为什么 500?
@@ -71,6 +71,12 @@ agent: 原因找到了：$payment 在 84 行的分支里没赋值。我来修。
 ```bash
 go install github.com/go-delve/delve/cmd/dlv@v1.24.2
 ```
+
+### Node 说明
+
+- `debug_run` 需要 `program`：入口 `.js`/`.ts` 文件（绝对路径或相对工作区）。
+- 不需要装任何调试器：直接驱动 Node 内置 inspector（`node --inspect-brk=0`）。`DSH_DEBUG_NODE` 可指定 node 二进制，默认用插件所在 runtime 的 node。
+- TypeScript：按你原本的方式跑——新版 Node 的 `--experimental-strip-types`，或经 `nodeArgs` 传 tsx/ts-node。断点行号以运行时为准。
 
 ## 远程调试（VM / 容器）
 
