@@ -1,3 +1,5 @@
 node_modules/
 *.log
 .DS_Store
+__debug_bin*
+last-run.log
