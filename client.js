@@ -273,9 +273,66 @@ window.__ModuleLoader__.load({
     const bugIcon = (size = 16) => h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'currentColor' },
       h('path', { d: 'M8 2a3 3 0 0 0-3 3v.34L3.6 4.2a.75.75 0 0 0-.8 1.26L4.3 6.7c-.2.34-.3.72-.3 1.1v.7H2.25a.75.75 0 0 0 0 1.5H4v.55c0 .24.03.47.08.7l-1.6 1.6a.75.75 0 1 0 1.06 1.05l1.34-1.33A3 3 0 0 0 8 13.5a3 3 0 0 0 3.12-2.15l1.34 1.33a.75.75 0 0 0 1.06-1.06l-1.6-1.6c.05-.22.08-.45.08-.69V10h1.75a.75.75 0 0 0 0-1.5H12v-.7c0-.38-.1-.76-.3-1.1l1.5-1.24a.75.75 0 0 0-.8-1.26L11 5.34V5a3 3 0 0 0-3-3Zm-1.5 3c0-.83.67-1.5 1.5-1.5S9.5 4.17 9.5 5v.5h-3V5Z' }))
 
+    /** The cwd of the conversation currently on screen (mainView retention). */
+    function findCurrentCwd(ctx) {
+      try {
+        const sessions = ctx.get?.('sessions') ?? ctx.sessions
+        const byId = sessions?.list?.getSnapshot?.()?.byId ?? {}
+        for (const row of Object.values(byId)) {
+          if ((row?.retainedBy?.mainView ?? 0) > 0 && typeof row.cwd === 'string') return row.cwd
+        }
+        const first = Object.values(byId)[0]
+        return typeof first?.cwd === 'string' ? first.cwd : ''
+      } catch { return '' }
+    }
+
+    /** Native main-area page: no scope arrives here, so discover the workspace ourselves. */
+    function DebugPage({ ctx }) {
+      const [cwd, setCwd] = useState(() => findCurrentCwd(ctx))
+      useEffect(() => {
+        if (cwd) return undefined
+        const timer = setInterval(() => {
+          const found = findCurrentCwd(ctx)
+          if (found) setCwd(found)
+        }, 2000)
+        return () => clearInterval(timer)
+      }, [ctx, cwd])
+      return h(DebugPanel, { scope: { cwd }, visible: true })
+    }
+
     function apply(ctx) {
       try { console.log('[dsh-debug] client loaded') } catch { /* no console */ }
-      let registered = false
+      const disposers = []
+
+      // Primary: the NATIVE slot system (dsh-codearts pattern) — a sidebar
+      // panellist entry whose icon opens the main-area page. No third-party
+      // service to wait for.
+      try {
+        const slots = ctx.slots ?? ctx.get?.('slots')
+        if (slots?.inject && slots?.register) {
+          disposers.push(slots.inject('sidebar.panellist', () =>
+            slots.register({
+              name: 'sidebar.panellist',
+              id: 'dsh-debug',
+              order: 50,
+              label: () => 'Debug',
+            }, ({ size }) => bugIcon(size))))
+          disposers.push(slots.inject('main', () =>
+            slots.register({
+              name: 'main',
+              key: 'dsh-debug',
+              inject: () => ({}),
+            }, () => h(DebugPage, { ctx }))))
+          try { console.log('[dsh-debug] native sidebar panel registered') } catch { /* no console */ }
+        } else {
+          try { console.warn('[dsh-debug] slots service unavailable') } catch { /* no console */ }
+        }
+      } catch (err) {
+        try { console.warn('[dsh-debug] native slots registration failed:', err) } catch { /* no console */ }
+      }
+
+      // Secondary: dsh-better-sidebar's tab system, when present. Its service
+      // shows up whenever its client half is ready; poll a while.
       const descriptor = {
         id: 'debug',
         title: () => 'Debug',
@@ -286,47 +343,37 @@ window.__ModuleLoader__.load({
         badge: () => null,
         component: ({ scope, visible }) => h(DebugPanel, { scope, visible }),
       }
-      const tryRegister = () => {
+      let registeredBs = false
+      const tryRegisterBs = () => {
         const service = ctx.betterSidebar ?? ctx.get?.('betterSidebar')
-        if (!service || typeof service.registerTab !== 'function' || registered) return false
+        if (!service || typeof service.registerTab !== 'function' || registeredBs) return false
         try {
-          if (typeof ctx.effect === 'function') {
-            ctx.effect(() => service.registerTab(descriptor), 'dsh-debug: debug tab')
-          } else {
-            service.registerTab(descriptor)
-          }
-          registered = true
-          try { console.log('[dsh-debug] Debug tab registered') } catch { /* no console */ }
+          disposers.push(service.registerTab(descriptor))
+          registeredBs = true
+          try { console.log('[dsh-debug] better-sidebar tab registered') } catch { /* no console */ }
           return true
         } catch (err) {
-          try { console.warn('[dsh-debug] registerTab failed:', err) } catch { /* no console */ }
+          try { console.warn('[dsh-debug] better-sidebar registerTab failed:', err) } catch { /* no console */ }
           return false
         }
       }
-      // better-sidebar's client half provides the service whenever it is
-      // ready — which may be later than this bundle's apply. Poll for up to
-      // 60s before giving up (same pattern the ecosystem viewers use).
-      if (!tryRegister()) {
+      if (!tryRegisterBs()) {
         let tries = 0
         const timer = setInterval(() => {
           tries += 1
-          if (tryRegister() || tries > 120) {
-            if (!registered) {
-              try { console.warn('[dsh-debug] betterSidebar service never appeared — is dsh-better-sidebar enabled?') } catch { /* no console */ }
-            }
-            clearInterval(timer)
-          }
+          if (tryRegisterBs() || tries > 120) clearInterval(timer)
         }, 500)
+        disposers.push(() => clearInterval(timer))
       }
+
+      return () => { for (const d of disposers.splice(0)) { try { d?.() } catch { /* gone */ } } }
     }
 
     exports.apply = apply
-    // Empty on purpose: the fiber must activate at boot. Waiting on the
-    // plugin-provided 'betterSidebar' service here parks the fiber in
-    // "pending" forever (observed on desktop 0.2.2-rc.1) — the retry loop in
-    // apply() is the reliable way to catch the service once better-sidebar's
-    // client half provides it.
-    exports.inject = []
+    // Activate at boot: wait on the host-provided 'slots' service (native
+    // sidebar), NOT on a plugin-provided one — plugin services park the fiber
+    // in pending forever (observed on desktop 0.2.2-rc.1).
+    exports.inject = ['slots']
     return module.exports
   },
 })
