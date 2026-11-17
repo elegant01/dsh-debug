@@ -309,7 +309,7 @@ window.__ModuleLoader__.load({
       // service to wait for. A locale namespace is registered because the
       // shell resolves entry labels through the locale service.
       try {
-        const locale = ctx.locale ?? ctx.get?.('locale')
+        const locale = ctx.get?.('locale') ?? ctx.locale
         if (locale?.register && locale?.bind) {
           disposers.push(locale.register('dsh-debug', {
             'zh-CN': { tabLabel: '调试' },
@@ -354,8 +354,13 @@ window.__ModuleLoader__.load({
         component: ({ scope, visible }) => h(DebugPanel, { scope, visible }),
       }
       let registeredBs = false
+      const probeService = () => {
+        try { const s = ctx.get?.('betterSidebar'); if (s) return s } catch { /* property rules differ by host */ }
+        try { return ctx.betterSidebar } catch { return undefined }
+        return undefined
+      }
       const tryRegisterBs = () => {
-        const service = ctx.betterSidebar ?? ctx.get?.('betterSidebar')
+        const service = probeService()
         if (!service || typeof service.registerTab !== 'function' || registeredBs) return false
         try {
           disposers.push(service.registerTab(descriptor))
@@ -380,10 +385,12 @@ window.__ModuleLoader__.load({
     }
 
     exports.apply = apply
-    // Activate at boot: wait on the host-provided 'slots' service (native
-    // sidebar), NOT on a plugin-provided one — plugin services park the fiber
-    // in pending forever (observed on desktop 0.2.2-rc.1).
-    exports.inject = ['slots']
+    // Both HOST services — always present, so the fiber activates at boot.
+    // Accessing ctx.locale WITHOUT declaring it throws ("cannot get property
+    // without inject"); a plugin-provided service here would park the fiber
+    // in pending forever. The optional betterSidebar surface stays out of
+    // this list and is polled for inside apply().
+    exports.inject = ['slots', 'locale']
     return module.exports
   },
 })
