@@ -304,19 +304,29 @@ window.__ModuleLoader__.load({
         }
       }
       // better-sidebar's client half provides the service whenever it is
-      // ready — which may be later than this bundle's apply. Poll briefly
-      // before giving up (same pattern the ecosystem viewers use).
+      // ready — which may be later than this bundle's apply. Poll for up to
+      // 60s before giving up (same pattern the ecosystem viewers use).
       if (!tryRegister()) {
         let tries = 0
         const timer = setInterval(() => {
           tries += 1
-          if (tryRegister() || tries > 40) clearInterval(timer)
+          if (tryRegister() || tries > 120) {
+            if (!registered) {
+              try { console.warn('[dsh-debug] betterSidebar service never appeared — is dsh-better-sidebar enabled?') } catch { /* no console */ }
+            }
+            clearInterval(timer)
+          }
         }, 500)
       }
     }
 
     exports.apply = apply
-    exports.inject = ['betterSidebar']
+    // Empty on purpose: the fiber must activate at boot. Waiting on the
+    // plugin-provided 'betterSidebar' service here parks the fiber in
+    // "pending" forever (observed on desktop 0.2.2-rc.1) — the retry loop in
+    // apply() is the reliable way to catch the service once better-sidebar's
+    // client half provides it.
+    exports.inject = []
     return module.exports
   },
 })
