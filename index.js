@@ -14,6 +14,10 @@ import { makeDebugTools } from './lib/tools.js'
 import { makeApiHandler, trustFence } from './lib/http-api.js'
 
 export const name = 'dsh-debug'
+// webServer is inject-gated on this host: touching ctx.webServer without
+// declaring it throws, which silently killed the API routes (the client then
+// read the host's empty 404 as broken JSON).
+export const inject = ['webServer', 'tools']
 
 const AUDIT_PATH = path.join(os.homedir(), '.dsh', 'dsh-debug-audit.jsonl')
 
@@ -74,10 +78,10 @@ export function apply(ctx) {
     })
   }
 
-  // Browser half: the Debug sidebar tab talks to these routes. Same trust
-  // fence as every other plugin host route: loopback Host, or a same-origin/
-  // same-site browser fetch.
-  const fence = trustFence(ctx)
+  // Browser half: the Debug sidebar tab talks to these routes. The fence is
+  // pure request inspection (loopback Host + loopback/absent Origin) — no
+  // inject-gated host service is touched at request time.
+  const fence = trustFence()
   let unregisterApi
   try {
     unregisterApi = ctx.webServer.register({

@@ -48,6 +48,7 @@ function fakeReq(method, url, body) {
   return {
     method,
     url,
+    headers: { host: '127.0.0.1:9000' }, // the fence requires a loopback Host
     on(event, fn) { listeners[event] = fn },
     destroy() {},
     send() {
