@@ -315,8 +315,28 @@ window.__ModuleLoader__.load({
 
     // --- registration -----------------------------------------------------------
 
-    const bugIcon = (size = 16) => h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'currentColor' },
-      h('path', { d: 'M8 2a3 3 0 0 0-3 3v.34L3.6 4.2a.75.75 0 0 0-.8 1.26L4.3 6.7c-.2.34-.3.72-.3 1.1v.7H2.25a.75.75 0 0 0 0 1.5H4v.55c0 .24.03.47.08.7l-1.6 1.6a.75.75 0 1 0 1.06 1.05l1.34-1.33A3 3 0 0 0 8 13.5a3 3 0 0 0 3.12-2.15l1.34 1.33a.75.75 0 0 0 1.06-1.06l-1.6-1.6c.05-.22.08-.45.08-.69V10h1.75a.75.75 0 0 0 0-1.5H12v-.7c0-.38-.1-.76-.3-1.1l1.5-1.24a.75.75 0 0 0-.8-1.26L11 5.34V5a3 3 0 0 0-3-3Zm-1.5 3c0-.83.67-1.5 1.5-1.5S9.5 4.17 9.5 5v.5h-3V5Z' }))
+    /** Render-time airbag: a panel error must never take the shell's sidebar down with it. */
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { err: null } }
+      static getDerivedStateFromError(err) { return { err } }
+      componentDidCatch(err) { try { console.error('[dsh-debug] panel render error:', err) } catch { /* no console */ } }
+      render() {
+        if (this.state.err) {
+          return h('div', { style: { padding: 12, color: '#e08a8a', fontSize: 12, whiteSpace: 'pre-wrap' } },
+            '调试面板渲染出错（不影响其他功能）：', String(this.state.err?.message ?? this.state.err))
+        }
+        return this.props.children
+      }
+    }
+
+    const bugIcon = (size = 16) => {
+      try {
+        return h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'currentColor' },
+          h('path', { d: 'M8 2a3 3 0 0 0-3 3v.34L3.6 4.2a.75.75 0 0 0-.8 1.26L4.3 6.7c-.2.34-.3.72-.3 1.1v.7H2.25a.75.75 0 0 0 0 1.5H4v.55c0 .24.03.47.08.7l-1.6 1.6a.75.75 0 1 0 1.06 1.05l1.34-1.33A3 3 0 0 0 8 13.5a3 3 0 0 0 3.12-2.15l1.34 1.33a.75.75 0 0 0 1.06-1.06l-1.6-1.6c.05-.22.08-.45.08-.69V10h1.75a.75.75 0 0 0 0-1.5H12v-.7c0-.38-.1-.76-.3-1.1l1.5-1.24a.75.75 0 0 0-.8-1.26L11 5.34V5a3 3 0 0 0-3-3Zm-1.5 3c0-.83.67-1.5 1.5-1.5S9.5 4.17 9.5 5v.5h-3V5Z' }))
+      } catch {
+        return h('span', { style: { fontSize: size } }, '🐞')
+      }
+    }
 
     /** The cwd of the conversation currently on screen (mainView retention). */
     function findCurrentCwd(ctx) {
@@ -342,7 +362,7 @@ window.__ModuleLoader__.load({
         }, 2000)
         return () => clearInterval(timer)
       }, [ctx, cwd])
-      return h(DebugPanel, { scope: { cwd }, visible: true })
+      return h(ErrorBoundary, null, h(DebugPanel, { scope: { cwd }, visible: true }))
     }
 
     function apply(ctx) {
@@ -355,11 +375,13 @@ window.__ModuleLoader__.load({
       // shell resolves entry labels through the locale service.
       try {
         const locale = ctx.get?.('locale') ?? ctx.locale
+        let t = null
         if (locale?.register && locale?.bind) {
           disposers.push(locale.register('dsh-debug', {
-            'zh-CN': { tabLabel: '调试' },
+            zh: { tabLabel: '调试' },
             en: { tabLabel: 'Debug' },
           }))
+          t = locale.bind('dsh-debug')
         }
         const slots = ctx.slots ?? ctx.get?.('slots')
         if (slots?.inject && slots?.register) {
@@ -368,7 +390,7 @@ window.__ModuleLoader__.load({
               name: 'sidebar.panellist',
               id: 'dsh-debug',
               order: 50,
-              label: locale?.bind ? locale.bind('dsh-debug')('tabLabel') : () => 'Debug',
+              label: t ? () => t('tabLabel') : () => 'Debug',
               locale: 'dsh-debug',
             }, ({ size }) => bugIcon(size))))
           disposers.push(slots.inject('main', () =>
