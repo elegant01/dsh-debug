@@ -59,6 +59,17 @@ window.__ModuleLoader__.load({
       location: { padding: '4px 8px', background: 'rgba(90,140,250,.12)', borderLeft: '3px solid rgba(90,140,250,.7)' },
     }
 
+    const STATE_LABELS = {
+      paused: '已暂停',
+      running: '运行中',
+      launching: '启动中',
+      armed: '监听中',
+      exited: '已退出',
+      terminated: '已终止',
+      error: '错误',
+      'no-session': '无会话',
+    }
+
     const STATE_COLORS = {
       paused: { background: 'rgba(230,180,60,.2)', color: '#e0b040' },
       running: { background: 'rgba(90,160,250,.18)', color: '#6aa4f0' },
@@ -72,7 +83,35 @@ window.__ModuleLoader__.load({
 
     function Pill({ state }) {
       const style = STATE_COLORS[state] ?? STATE_COLORS['no-session']
-      return h('span', { style: { ...S.pill, ...style } }, state)
+      return h('span', { style: { ...S.pill, ...style } }, STATE_LABELS[state] ?? state)
+    }
+
+    /** First-run guide: what this is and the two ways to drive it. */
+    function GuideCard({ language }) {
+      const step = { margin: '6px 0', lineHeight: 1.7 }
+      const code = { ...S.mono, background: 'rgba(128,128,128,.12)', borderRadius: 3, padding: '0 4px' }
+      const card = { border: '1px solid rgba(128,128,128,.25)', borderRadius: 8, padding: '10px 12px', margin: '8px 0' }
+      const h3 = { margin: '0 0 6px', fontSize: 13 }
+      return h('div', { style: { padding: '8px' } },
+        h('div', { style: card },
+          h('h3', { style: h3 }, '🐞 这是什么'),
+          h('div', { style: { opacity: 0.8, lineHeight: 1.7 } },
+            '运行时调试器：把真实程序停在你指定的某一行，直接看当时的变量、调用栈——不用加日志、不用猜。agent 在对话里也能驱动它（debug_run 等工具），这个面板就是同一套东西的遥控器。')),
+        h('div', { style: card },
+          h('h3', { style: h3 }, '本机程序：4 步'),
+          h('div', { style: step }, `1. 左上角选语言（当前：${language === 'php' ? 'PHP' : language === 'node' ? 'Node' : 'Go'}）`),
+          h('div', { style: step }, '2. 填入口程序：', h('br'),
+            h('span', { style: code }, language === 'php' ? 'artisan（或任意 .php 脚本）' : language === 'node' ? 'index.js / xxx.ts' : '留空 = 整个 Go 包')),
+          h('div', { style: step }, '3. 加断点：', h('span', { style: code }, language === 'php' ? 'app/Services/OrderService.php:88' : language === 'node' ? 'src/server.js:42' : 'main.go:14'), ' 回车'),
+          h('div', { style: step }, '4. 点 ▶ 运行 → 停住后下面出现变量、调用栈、输出；可继续/单步/求值')),
+        language === 'php' && h('div', { style: card },
+          h('h3', { style: h3 }, 'Web 接口调试（远程/容器里的 PHP）'),
+          h('div', { style: step }, '1. 先开隧道（一个终端挂着）：', h('br'), h('span', { style: code }, 'ssh -N -R 9003:127.0.0.1:9003 <你的虚拟机>')),
+          h('div', { style: step }, '2. 点上面「监听请求」按钮（按钮变紫 = 监听中）'),
+          h('div', { style: step }, '3. 带触发器发请求：', h('span', { style: code }, '?XDEBUG_SESSION=dsh-debug')),
+          h('div', { style: step }, '4. 请求会卡在断点上——这里看变量，点 ⏵ 放行后接口才返回')),
+        h('div', { style: { ...S.hint, padding: '0 4px' } }, '每工作区每语言一个会话；停着不动 10 分钟自动回收。变量里的密钥会先脱敏再给模型。'),
+      )
     }
 
     function Btn({ label, title, onClick, disabled, danger }) {
@@ -191,64 +230,70 @@ window.__ModuleLoader__.load({
             value: language, onChange: (e) => setLanguage(e.target.value),
             style: { ...S.input, flex: '0 0 auto' }, disabled: active,
           }, h('option', { value: 'go' }, 'Go'), h('option', { value: 'php' }, 'PHP'), h('option', { value: 'node' }, 'Node')),
-          h(Btn, { label: '▶ Run', title: 'debug_run', disabled: busy || active || !workspace, onClick: () => act('run', runArgs()) }),
-          h(Btn, { label: 'Attach', title: 'debug_run attach:true — arm the listener and wait for Xdebug', disabled: busy || active || !workspace || language !== 'php', onClick: () => act('run', { attach: true, breakpoints, timeoutMs: 5000 }) }),
-          h(Btn, { label: '⏵', title: 'Continue', disabled: busy || !paused, onClick: () => act('continue', { action: 'continue' }) }),
-          h(Btn, { label: '⤼', title: 'Step over', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepOver' }) }),
-          h(Btn, { label: '⤓', title: 'Step into', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepIn' }) }),
-          h(Btn, { label: '⤒', title: 'Step out', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepOut' }) }),
-          h(Btn, { label: '⏹', title: 'Stop', danger: true, disabled: busy || (!active && state !== 'armed'), onClick: () => act('stop', {}) }),
+          h(Btn, { label: '▶ 运行', title: '启动程序并停在第一个断点（没断点就直接跑完）', disabled: busy || active || !workspace, onClick: () => act('run', runArgs()) }),
+          h(Btn, { label: '监听请求', title: 'PHP Web 调试：武装监听器，等带触发器的 HTTP 请求连上来（远程/容器先开 ssh -R 隧道）', disabled: busy || active || !workspace || language !== 'php', onClick: () => act('run', { attach: true, breakpoints, timeoutMs: 5000 }) }),
+          h(Btn, { label: '⏵', title: '继续运行', disabled: busy || !paused, onClick: () => act('continue', { action: 'continue' }) }),
+          h(Btn, { label: '⤼', title: '单步跳过（不进入函数）', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepOver' }) }),
+          h(Btn, { label: '⤓', title: '单步进入（进入函数）', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepIn' }) }),
+          h(Btn, { label: '⤒', title: '跳出当前函数', disabled: busy || !paused, onClick: () => act('continue', { action: 'stepOut' }) }),
+          h(Btn, { label: '⏹', title: '结束调试会话', danger: true, disabled: busy || (!active && state !== 'armed'), onClick: () => act('stop', {}) }),
         ),
-        error && h('div', { style: S.errorBox }, error),
-        !workspace && h('div', { style: { ...S.section, ...S.hint } }, 'no workspace in this session'),
+        error && h('div', { style: S.errorBox }, `⚠ ${error}`),
+        !workspace && h('div', { style: { ...S.section, ...S.hint } }, '这个会话还没有工作区——先在工作区里开一个会话'),
 
         h('div', { style: S.body },
+          // 空会话引导
+          state === 'no-session' && !error && h(GuideCard, { language }),
+
           // paused location
           snapshot?.location && h('div', { style: S.location },
-            h('div', { style: S.mono }, `${snapshot.location.path ?? ''}:${snapshot.location.line ?? ''}`),
+            h('div', { style: S.mono }, `停在 ${snapshot.location.path ?? ''}:${snapshot.location.line ?? ''}`),
             h('div', { style: { opacity: 0.6 } }, snapshot.location.function ?? '')),
 
           // armed trigger info
           state === 'armed' && snapshot?.trigger && h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, 'armed — trigger with'),
-            h('div', { style: S.mono }, `URL: ?${snapshot.trigger.urlParam}`),
-            h('div', { style: S.mono }, `cookie: ${snapshot.trigger.cookie}`),
-            h('div', { style: { ...S.mono, ...S.hint } }, snapshot.trigger.xdebugConfig)),
+            h('div', { style: S.sectionTitle }, '监听器已武装，等请求上门'),
+            h('div', { style: { lineHeight: 1.8 } },
+              h('div', null, '带触发器发请求：'),
+              h('div', { style: S.mono }, `  URL 参数  ?${snapshot.trigger.urlParam}`),
+              h('div', { style: S.mono }, `  Cookie    ${snapshot.trigger.cookie}`),
+              h('div', { style: { ...S.mono, ...S.hint } }, `目标 PHP 的 Xdebug：${snapshot.trigger.xdebugConfig}`),
+              h('div', { style: { ...S.mono, ...S.hint } }, '远程/容器先开隧道：ssh -N -R 9003:127.0.0.1:9003 <虚拟机>'))),
 
           // program + run config
           h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, 'target'),
+            h('div', { style: S.sectionTitle }, '目标'),
             h('div', { style: S.row },
-              h('input', { style: S.input, placeholder: language === 'php' ? 'entry script, e.g. artisan / public/index.php' : 'package dir (default: workspace root)', value: program, onChange: (e) => setProgram(e.target.value), disabled: active }),
+              h('input', { style: S.input, placeholder: language === 'php' ? '入口脚本：artisan / public/index.php / xxx.php' : language === 'node' ? '入口文件：index.js / xxx.ts' : 'Go 包目录（留空 = 工作区根）', value: program, onChange: (e) => setProgram(e.target.value), disabled: active }),
             ),
             h('div', { style: S.row },
-              h('input', { style: S.input, placeholder: 'breakpoint: path/to/file.php:88', value: bpInput, onChange: (e) => setBpInput(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter') addBreakpoint() }, disabled: active }),
-              h(Btn, { label: '+ bp', disabled: active || !bpInput.trim(), onClick: addBreakpoint }),
+              h('input', { style: S.input, placeholder: '加断点：文件路径:行号，如 app/Services/OrderService.php:88', value: bpInput, onChange: (e) => setBpInput(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter') addBreakpoint() }, disabled: active }),
+              h(Btn, { label: '+ 断点', title: '添加断点', disabled: active || !bpInput.trim(), onClick: addBreakpoint }),
             ),
             breakpoints.length > 0 && h('div', { style: { marginTop: 4 } },
               breakpoints.map((bp) => h('div', { key: `${bp.file}:${bp.line}`, style: { ...S.mono, display: 'flex', justifyContent: 'space-between' } },
                 h('span', null, `● ${bp.file}:${bp.line}`),
-                h('button', { style: S.linkBtn, title: 'remove', onClick: () => saveBps(breakpoints.filter((b) => b !== bp)), disabled: active }, '×'),
+                h('button', { style: S.linkBtn, title: '删除这个断点', onClick: () => saveBps(breakpoints.filter((b) => b !== bp)), disabled: active }, '×'),
               ))),
           ),
 
           // locals
           snapshot?.locals && h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, `locals (${Object.keys(snapshot.locals).length})`),
+            h('div', { style: S.sectionTitle }, `变量（${Object.keys(snapshot.locals).length}）`),
             Object.entries(snapshot.locals).map(([k, v]) => h(ValueTree, { key: k, name: k, value: v, depth: 0 }))),
 
           // expressions from the snapshot
           snapshot?.expressions && h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, 'expressions'),
+            h('div', { style: S.sectionTitle }, '表达式'),
             Object.entries(snapshot.expressions).map(([k, v]) =>
               h('div', { key: k, style: S.mono }, h('span', { style: { opacity: 0.7 } }, `${k} = `), h('span', null, typeof v === 'object' ? JSON.stringify(v) : String(v)))),
 
           // eval console
           paused && h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, 'evaluate'),
+            h('div', { style: S.sectionTitle }, '求值（在暂停的栈顶帧里执行）'),
             h('div', { style: S.row },
-              h('input', { style: { ...S.input, ...S.mono }, placeholder: language === 'php' ? '$order->status' : 'len(items)', value: evalInput, onChange: (e) => setEvalInput(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter' && evalInput.trim()) { act('eval', { expression: evalInput.trim() }); setEvalInput('') } } }),
-              h(Btn, { label: 'eval', disabled: busy || !evalInput.trim(), onClick: () => { act('eval', { expression: evalInput.trim() }); setEvalInput('') } }),
+              h('input', { style: { ...S.input, ...S.mono }, placeholder: language === 'php' ? '$order->status' : language === 'node' ? 'items.length' : 'len(items)', value: evalInput, onChange: (e) => setEvalInput(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter' && evalInput.trim()) { act('eval', { expression: evalInput.trim() }); setEvalInput('') } } }),
+              h(Btn, { label: '求值', disabled: busy || !evalInput.trim(), onClick: () => { act('eval', { expression: evalInput.trim() }); setEvalInput('') } }),
             ),
             evalHistory.slice(0, 5).map((r, i) => h('div', { key: i, style: { ...S.mono, marginTop: 3 } },
               h('span', { style: { opacity: 0.6 } }, `${r.expression} → `),
@@ -256,14 +301,14 @@ window.__ModuleLoader__.load({
 
           // stack
           snapshot?.stack && h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, `stack (${snapshot.stack.length})`),
+            h('div', { style: S.sectionTitle }, `调用栈（${snapshot.stack.length}）`),
             snapshot.stack.slice(0, 30).map((f, i) =>
               h('div', { key: i, style: { ...S.mono, opacity: i === 0 ? 1 : 0.7 } }, `${f.name}  ${(f.path ?? '').split(/[\\/]/).pop()}:${f.line}`)))),
 
           // output
           h('div', { style: S.section },
-            h('div', { style: S.sectionTitle }, 'output'),
-            output ? h('div', { style: { ...S.outputBox, ...S.mono } }, output) : h('div', { style: S.hint }, '(empty)')),
+            h('div', { style: S.sectionTitle }, '输出'),
+            output ? h('div', { style: { ...S.outputBox, ...S.mono } }, output) : h('div', { style: S.hint }, '（暂无输出）')),
         ),
       )
     }
