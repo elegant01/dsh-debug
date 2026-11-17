@@ -306,8 +306,16 @@ window.__ModuleLoader__.load({
 
       // Primary: the NATIVE slot system (dsh-codearts pattern) — a sidebar
       // panellist entry whose icon opens the main-area page. No third-party
-      // service to wait for.
+      // service to wait for. A locale namespace is registered because the
+      // shell resolves entry labels through the locale service.
       try {
+        const locale = ctx.locale ?? ctx.get?.('locale')
+        if (locale?.register && locale?.bind) {
+          disposers.push(locale.register('dsh-debug', {
+            'zh-CN': { tabLabel: '调试' },
+            en: { tabLabel: 'Debug' },
+          }))
+        }
         const slots = ctx.slots ?? ctx.get?.('slots')
         if (slots?.inject && slots?.register) {
           disposers.push(slots.inject('sidebar.panellist', () =>
@@ -315,12 +323,14 @@ window.__ModuleLoader__.load({
               name: 'sidebar.panellist',
               id: 'dsh-debug',
               order: 50,
-              label: () => 'Debug',
+              label: locale?.bind ? locale.bind('dsh-debug')('tabLabel') : () => 'Debug',
+              locale: 'dsh-debug',
             }, ({ size }) => bugIcon(size))))
           disposers.push(slots.inject('main', () =>
             slots.register({
               name: 'main',
               key: 'dsh-debug',
+              locale: 'dsh-debug',
               inject: () => ({}),
             }, () => h(DebugPage, { ctx }))))
           try { console.log('[dsh-debug] native sidebar panel registered') } catch { /* no console */ }
